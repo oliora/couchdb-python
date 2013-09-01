@@ -43,7 +43,7 @@ class DesignTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         second_view = design.ViewDefinition('design_doc_two', 'view_one', func)
         third_view = design.ViewDefinition('design_doc', 'view_two', func)
         _, db = self.temp_db()
-        results = design.ViewDefinition.sync_many(
+        results = design.sync_definitions(
             db, (first_view, second_view, third_view))
         self.assertEqual(
             len(results), 2, 'There should only be two design documents')

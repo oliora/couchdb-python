@@ -15,7 +15,7 @@ from operator import attrgetter
 from textwrap import dedent
 from types import FunctionType
 
-__all__ = ['ViewDefinition']
+__all__ = ['sync_definitions', 'ViewDefinition']
 __docformat__ = 'restructuredtext en'
 
 
@@ -163,17 +163,60 @@ class ViewDefinition(object):
                          design document as only parameter, before that doc
                          has actually been saved back to the database
         """
+        return sync_definitions(db, views, remove_missing, callback)
+
+
+def sync_definitions(db, definitions, remove_missing=False, callback=None):
+    """Ensure that the definitions stored in the database that correspond to a
+    given list of "definition" instances match the code defined in those instances.
+
+    This function might update more than one design document. This is done
+    using the CouchDB bulk update feature to ensure atomicity of the
+    operation.
+
+    :param db: the `Database` instance
+    :param definitions: a sequence of "definition" instances
+    :param remove_missing: whether definitions found in a design document that
+                           are not present in given `definitions`
+                           should be removed
+    :param callback: a callback function that is invoked when a design
+                     document gets updated; the callback gets passed the
+                     design document as only parameter, before that doc
+                     has actually been saved back to the database
+    """
+    definitions = sorted(definitions, key=attrgetter('design'))
+
+    design_docs = (_DesignDocument.from_definitions(design, defs)
+        for design, defs in groupby(definitions, key=attrgetter('design')))
+
+    return _DesignDocument.sync_many(db, design_docs, remove_missing, callback)
+
+
+class _DesignDocument(object):
+    @classmethod
+    def from_definitions(cls, design, definitions):
+        return cls(design, views=definitions)
+
+    def __init__(self, design, **kwargs):
+        if design.startswith('_design/'):
+            design = design[8:]
+        self.design = design
+        self.views = kwargs.pop('views', [])
+        if kwargs:
+            raise TypeError("Invalid keyword argument '%s'" % next(kwargs.iterkeys()))
+
+    @staticmethod
+    def sync_many(db, design_docs, remove_missing=False, callback=None):
         docs = []
 
-        views = sorted(views, key=attrgetter('design'))
-        for design, views in groupby(views, key=attrgetter('design')):
-            doc_id = '_design/%s' % design
+        for design_doc in design_docs:
+            doc_id = '_design/%s' % design_doc.design
             doc = db.get(doc_id, {'_id': doc_id})
             orig_doc = deepcopy(doc)
             languages = set()
 
             missing = list(doc.get('views', {}).keys())
-            for view in views:
+            for view in design_doc.views:
                 funcs = {'map': view.map_fun}
                 if view.reduce_fun:
                     funcs['reduce'] = view.reduce_fun
@@ -191,7 +234,7 @@ class ViewDefinition(object):
                 languages.add(doc['language'])
 
             if len(languages) > 1:
-                raise ValueError('Found different language views in one '
+                raise ValueError('Found different language definitions in one '
                                  'design document (%r)', list(languages))
             doc['language'] = list(languages)[0]
 
