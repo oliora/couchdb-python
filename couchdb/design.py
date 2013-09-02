@@ -447,9 +447,9 @@ def sync_definitions(db, definitions, remove_missing=False, callback=None):
 
 class _DesignDocument(object):
     __definition_types = (
-        (ValidateFunctionDefinition, 'validate_func'),
+        (ValidateFunctionDefinition, 'validate_doc_update'),
         (ViewDefinition, 'views'),
-        (UpdateHandlerDefinition, 'update_handlers'),
+        (UpdateHandlerDefinition, 'updates'),
         (ShowFunctionDefinition, 'shows'),
     )
 
