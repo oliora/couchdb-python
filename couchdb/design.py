@@ -160,7 +160,7 @@ class ViewDefinition(DefinitionMixin):
             if view.options:
                 retval['options'] = view.options
             return retval
-        _sync_dict_field(doc, 'views', views, get_definition, remove_missing, languages)
+        _sync_dict_field(doc, 'views', views, remove_missing, languages, get_definition)
 
     @staticmethod
     def sync_many(db, views, remove_missing=False, callback=None):
@@ -260,8 +260,7 @@ class UpdateHandlerDefinition(DefinitionMixin):
 
     @staticmethod
     def _sync_doc(doc, update_handlers, remove_missing, languages):
-        _sync_dict_field(doc, 'updates', update_handlers, attrgetter('func'),
-                         remove_missing, languages)
+        _sync_dict_field(doc, 'updates', update_handlers, remove_missing, languages)
 
 
 class ValidateFunctionDefinition(DefinitionMixin):
@@ -415,8 +414,7 @@ class ShowFunctionDefinition(DefinitionMixin):
 
     @staticmethod
     def _sync_doc(doc, view_functions, remove_missing, languages):
-        _sync_dict_field(doc, 'shows', view_functions, attrgetter('func'),
-                         remove_missing, languages)
+        _sync_dict_field(doc, 'shows', view_functions, remove_missing, languages)
 
 
 def sync_definitions(db, definitions, remove_missing=False, callback=None):
@@ -520,7 +518,9 @@ def _strip_decorators(code):
     return '\n'.join(retval)
 
 
-def _sync_dict_field(doc, field, definitions, definition_getter, remove_missing, languages):
+def _sync_dict_field(doc, field, definitions, remove_missing, languages, definition_getter=None):
+    if definition_getter is None:
+        definition_getter = attrgetter('func')
     missing = list(doc.get(field, {}).keys())
     for definition in definitions:
         doc.setdefault(field, {})[definition.name] = definition_getter(definition)
