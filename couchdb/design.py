@@ -153,24 +153,14 @@ class ViewDefinition(DefinitionMixin):
 
     @staticmethod
     def _sync_doc(doc, views, remove_missing, languages):
-        missing = list(doc.get('views', {}).keys())
-        for view in views:
-            funcs = {'map': view.map_fun}
+        def get_definition(view):
+            retval = {'map': view.map_fun}
             if view.reduce_fun:
-                funcs['reduce'] = view.reduce_fun
+                retval['reduce'] = view.reduce_fun
             if view.options:
-                funcs['options'] = view.options
-
-            doc.setdefault('views', {})[view.name] = funcs
-            languages.add(view.language)
-            if view.name in missing:
-                missing.remove(view.name)
-
-        if remove_missing and missing:
-            for name in missing:
-                del doc['views'][name]
-        elif missing and 'language' in doc:
-            languages.add(doc['language'])
+                retval['options'] = view.options
+            return retval
+        _sync_dict_field(doc, 'views', views, get_definition, remove_missing, languages)
 
     @staticmethod
     def sync_many(db, views, remove_missing=False, callback=None):
@@ -291,3 +281,18 @@ def _strip_decorators(code):
             beginning = False
         retval.append(line)
     return '\n'.join(retval)
+
+
+def _sync_dict_field(doc, field, definitions, definition_getter, remove_missing, languages):
+    missing = list(doc.get(field, {}).keys())
+    for definition in definitions:
+        doc.setdefault(field, {})[definition.name] = definition_getter(definition)
+        languages.add(definition.language)
+        if definition.name in missing:
+            missing.remove(definition.name)
+
+    if remove_missing and missing:
+        for name in missing:
+            del doc[field][name]
+    elif missing and 'language' in doc:
+        languages.add(doc['language'])
