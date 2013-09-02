@@ -264,6 +264,83 @@ class UpdateHandlerDefinition(DefinitionMixin):
                          remove_missing, languages)
 
 
+class ValidateFunctionDefinition(DefinitionMixin):
+    r"""Definition of a validate_doc_update function stored in a specific design document.
+
+    An instance of this class can be used to keep the validate_doc_update definition
+    in the design document up to date with the definition in the application code.
+
+    >>> from couchdb import Server
+    >>> server = Server()
+    >>> db = server.create('python-tests')
+
+    >>> validator = ValidateFunctionDefinition('tests', '''
+    ... function(newDoc, oldDoc, userCtx, secObj) {
+    ...     if (newDoc.user == 'root') {
+    ...         throw({unauthorized: 'No party for admins, sorry.'});
+    ...     }
+    ... }''')
+    >>> validator.get_doc(db)
+
+    The definition is not yet stored in the database, in fact, design doc doesn't
+    even exist yet. That can be fixed using the `sync` method:
+
+    >>> validator.sync(db) #doctest: +ELLIPSIS
+    [(True, '_design/tests', ...)]
+    >>> design_doc = validator.get_doc(db)
+    >>> design_doc #doctest: +ELLIPSIS
+    <Document '_design/tests'@'...' {...}>
+    >>> print design_doc['validate_doc_update']
+    function(newDoc, oldDoc, userCtx, secObj) {
+        if (newDoc.user == 'root') {
+            throw({unauthorized: 'No party for admins, sorry.'});
+        }
+    }
+
+    >>> del server['python-tests']
+    """
+    def __init__(self, design, func, language='javascript'):
+        """Initialize the validate function definition.
+
+        Note that the code in `func` is automatically dedented, that is,
+        any common leading whitespace is removed from each line.
+
+        :param design: the name of the design document
+        :param func: the update handler function code
+        :param language: the name of the language used
+        """
+        super(ValidateFunctionDefinition, self).__init__(design)
+        if isinstance(func, FunctionType):
+            func = _strip_decorators(getsource(func).rstrip())
+        self.func = dedent(func.lstrip('\n'))
+        self.language = language
+
+    def __repr__(self):
+        return '<%s %r>' % (type(self).__name__, '/'.join([
+            '_design', self.design, 'validate_doc_update'
+        ]))
+
+    @staticmethod
+    def _sync_doc(doc, validate_func, remove_missing, languages):
+        if isinstance(validate_func, ValidateFunctionDefinition):
+            pass
+        elif len(validate_func) == 0:
+            validate_func = None
+        elif len(validate_func) == 1:
+            validate_func = next(iter(validate_func))
+        else:
+            raise ValueError("More than one ValidateFunctionDefinition per design document passed")
+
+        if validate_func:
+            doc['validate_doc_update'] = validate_func.func
+            languages.add(validate_func.language)
+        elif 'validate_doc_update' in doc:
+            if remove_missing:
+                del doc['validate_doc_update']
+            else:
+                languages.add(doc['language'])
+
+
 def sync_definitions(db, definitions, remove_missing=False, callback=None):
     """Ensure that the definitions stored in the database that correspond to a
     given list of "definition" instances match the code defined in those instances.
@@ -292,6 +369,7 @@ def sync_definitions(db, definitions, remove_missing=False, callback=None):
 
 class _DesignDocument(object):
     __definition_types = (
+        (ValidateFunctionDefinition, 'validate_func'),
         (ViewDefinition, 'views'),
         (UpdateHandlerDefinition, 'update_handlers'),
     )
