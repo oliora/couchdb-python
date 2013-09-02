@@ -15,7 +15,12 @@ from operator import attrgetter
 from textwrap import dedent
 from types import FunctionType
 
-__all__ = ['sync_definitions', 'ViewDefinition']
+__all__ = ['sync_definitions',
+           'ViewDefinition',
+           'UpdateHandlerDefinition',
+           'ValidateFunctionDefinition',
+           'ShowFunctionDefinition',
+           ]
 __docformat__ = 'restructuredtext en'
 
 
