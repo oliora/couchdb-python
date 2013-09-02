@@ -185,6 +185,85 @@ class ViewDefinition(DefinitionMixin):
         return sync_definitions(db, views, remove_missing, callback)
 
 
+class UpdateHandlerDefinition(DefinitionMixin):
+    r"""Definition of an update handler stored in a specific design document.
+
+    An instance of this class can be used to call an update handler in database,
+    as well as to keep the update handler definition in the design document
+    up to date with the definition in the application code.
+
+    >>> from couchdb import Server
+    >>> server = Server()
+    >>> db = server.create('python-tests')
+
+    >>> update_handler = UpdateHandlerDefinition('tests', 'activate', '''function(doc, req) {
+    ...     doc.active = true;
+    ...     return [doc, "OK"]
+    ... }''')
+    >>> update_handler.get_doc(db)
+
+    The update handler is not yet stored in the database, in fact, design doc doesn't
+    even exist yet. That can be fixed using the `sync` method:
+
+    >>> update_handler.sync(db)                             #doctest: +ELLIPSIS
+    [(True, '_design/tests', ...)]
+    >>> design_doc = update_handler.get_doc(db)
+    >>> design_doc                                          #doctest: +ELLIPSIS
+    <Document '_design/tests'@'...' {...}>
+    >>> print design_doc['updates']['activate']
+    function(doc, req) {
+        doc.active = true;
+        return [doc, "OK"]
+    }
+
+    >>> del server['python-tests']
+    """
+
+    def __init__(self, design, name, func, language='javascript',
+                 **defaults):
+        """Initialize the update handler definition.
+
+        Note that the code in `func` is automatically dedented, that is,
+        any common leading whitespace is removed from each line.
+
+        :param design: the name of the design document
+        :param name: the name of the update handler
+        :param func: the update handler function code
+        :param language: the name of the language used
+        """
+        super(UpdateHandlerDefinition, self).__init__(design)
+        self.name = name
+        if isinstance(func, FunctionType):
+            func = _strip_decorators(getsource(func).rstrip())
+        self.func = dedent(func.lstrip('\n'))
+        self.language = language
+        self.defaults = defaults
+
+    def __call__(self, db, docid=None, **options):
+        """Execute the update handler in the given database.
+
+        :param db: the `Database` instance
+        :param docid: optional ID of a document to pass to the update handler
+        :param options: optional query string parameters
+        :return: (headers, body) tuple, where headers is a dict of headers
+                 returned from the list function and body is a readable
+                 file-like instance
+        """
+        merged_options = self.defaults.copy()
+        merged_options.update(options)
+        return db.update_doc('/'.join([self.design, self.name]), docid, **merged_options)
+
+    def __repr__(self):
+        return '<%s %r>' % (type(self).__name__, '/'.join([
+            '_design', self.design, '_update', self.name
+        ]))
+
+    @staticmethod
+    def _sync_doc(doc, update_handlers, remove_missing, languages):
+        _sync_dict_field(doc, 'updates', update_handlers, attrgetter('func'),
+                         remove_missing, languages)
+
+
 def sync_definitions(db, definitions, remove_missing=False, callback=None):
     """Ensure that the definitions stored in the database that correspond to a
     given list of "definition" instances match the code defined in those instances.
@@ -214,6 +293,7 @@ def sync_definitions(db, definitions, remove_missing=False, callback=None):
 class _DesignDocument(object):
     __definition_types = (
         (ViewDefinition, 'views'),
+        (UpdateHandlerDefinition, 'update_handlers'),
     )
 
     @classmethod
