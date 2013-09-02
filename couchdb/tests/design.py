@@ -48,6 +48,15 @@ class DesignTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         self.assertEqual(
             len(results), 2, 'There should only be two design documents')
 
+    def test_sync_unknown_definition_type(self):
+        func = 'function(doc) { emit(doc._id, doc._rev); }'
+        first_def = design.ViewDefinition('design_doc', 'view_one', func)
+        second_def = design.ViewDefinition('design_doc_two', 'view_one', func)
+        third_def = design.DefinitionMixin('design_doc_two')
+        _, db = self.temp_db()
+        self.assertRaises(TypeError,
+            design.sync_definitions, db, (first_def, second_def, third_def))
+
 
 def suite():
     suite = unittest.TestSuite()

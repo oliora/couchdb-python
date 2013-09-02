@@ -152,6 +152,27 @@ class ViewDefinition(DefinitionMixin):
         ]))
 
     @staticmethod
+    def _sync_doc(doc, views, remove_missing, languages):
+        missing = list(doc.get('views', {}).keys())
+        for view in views:
+            funcs = {'map': view.map_fun}
+            if view.reduce_fun:
+                funcs['reduce'] = view.reduce_fun
+            if view.options:
+                funcs['options'] = view.options
+
+            doc.setdefault('views', {})[view.name] = funcs
+            languages.add(view.language)
+            if view.name in missing:
+                missing.remove(view.name)
+
+        if remove_missing and missing:
+            for name in missing:
+                del doc['views'][name]
+        elif missing and 'language' in doc:
+            languages.add(doc['language'])
+
+    @staticmethod
     def sync_many(db, views, remove_missing=False, callback=None):
         """Ensure that the views stored in the database that correspond to a
         given list of `ViewDefinition` instances match the code defined in
@@ -201,17 +222,45 @@ def sync_definitions(db, definitions, remove_missing=False, callback=None):
 
 
 class _DesignDocument(object):
+    __definition_types = (
+        (ViewDefinition, 'views'),
+    )
+
     @classmethod
     def from_definitions(cls, design, definitions):
-        return cls(design, views=definitions)
+        typed_definitions = [(def_type, name, []) for def_type, name in _DesignDocument.__definition_types]
+
+        for definition in definitions:
+            unknown_type = True
+            for def_type in typed_definitions:
+                if isinstance(definition, def_type[0]):
+                    def_type[2].append(definition)
+                    unknown_type = False
+            if unknown_type:
+                raise TypeError("Invalid definition type '%s'" % definition.__class__.__name__)
+
+        typed_definitions = dict((name, defs) for _, name, defs in typed_definitions)
+        return cls(design, **typed_definitions)
 
     def __init__(self, design, **kwargs):
         if design.startswith('_design/'):
             design = design[8:]
         self.design = design
-        self.views = kwargs.pop('views', [])
+        for _, name in _DesignDocument.__definition_types:
+            setattr(self, name, kwargs.pop(name, []))
         if kwargs:
             raise TypeError("Invalid keyword argument '%s'" % next(kwargs.iterkeys()))
+
+    def _sync_doc(self, doc, remove_missing):
+            languages = set()
+
+            for def_type, name in _DesignDocument.__definition_types:
+                def_type._sync_doc(doc, getattr(self, name), remove_missing, languages)
+
+            if len(languages) > 1:
+                raise ValueError('Found different language definitions in one '
+                                 'design document (%r)', list(languages))
+            doc['language'] = list(languages)[0]
 
     @staticmethod
     def sync_many(db, design_docs, remove_missing=False, callback=None):
@@ -221,30 +270,8 @@ class _DesignDocument(object):
             doc_id = '_design/%s' % design_doc.design
             doc = db.get(doc_id, {'_id': doc_id})
             orig_doc = deepcopy(doc)
-            languages = set()
 
-            missing = list(doc.get('views', {}).keys())
-            for view in design_doc.views:
-                funcs = {'map': view.map_fun}
-                if view.reduce_fun:
-                    funcs['reduce'] = view.reduce_fun
-                if view.options:
-                    funcs['options'] = view.options
-                doc.setdefault('views', {})[view.name] = funcs
-                languages.add(view.language)
-                if view.name in missing:
-                    missing.remove(view.name)
-
-            if remove_missing and missing:
-                for name in missing:
-                    del doc['views'][name]
-            elif missing and 'language' in doc:
-                languages.add(doc['language'])
-
-            if len(languages) > 1:
-                raise ValueError('Found different language definitions in one '
-                                 'design document (%r)', list(languages))
-            doc['language'] = list(languages)[0]
+            design_doc._sync_doc(doc, remove_missing)
 
             if doc != orig_doc:
                 if callback is not None:
