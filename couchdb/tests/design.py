@@ -60,11 +60,21 @@ class DesignTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         _, db = self.temp_db()
         self.assertRaises(ValueError, design.sync_definitions, db, (first_validator, second_validator))
 
+    def test_retrieve_show_func_defn(self):
+        show_func_def = design.ShowFunctionDefinition('foo', 'bar', 'baz')
+        result = show_func_def.sync(self.db)
+        self.assertTrue(isinstance(result, list))
+        self.assertEqual(result[0][0], True)
+        self.assertEqual(result[0][1], '_design/foo')
+        doc = self.db[result[0][1]]
+        self.assertEqual(result[0][2], doc['_rev'])
+
     def test_sync_many(self):
         '''see issue 218'''
         view_func = 'function(doc) { emit(doc._id, doc._rev); }'
         update_func = 'function(doc, req) { return [doc, "OK"]; }'
         validator_func = 'function(newDoc, oldDoc, userCtx, secObj) {}'
+        show_func = 'function(doc, req) { return {status: "OK"}; }'
         first_view = design.ViewDefinition('design_doc', 'view_one', view_func)
         second_view = design.ViewDefinition('design_doc_two', 'view_one', view_func)
         third_view = design.ViewDefinition('design_doc', 'view_two', view_func)
@@ -73,13 +83,17 @@ class DesignTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         third_updater = design.UpdateHandlerDefinition('design_doc_three', 'update_one', update_func)
         first_validator = design.ValidateFunctionDefinition('design_doc_two', validator_func)
         second_validator = design.ValidateFunctionDefinition('design_doc_four', validator_func)
+        first_show_func = design.ShowFunctionDefinition('design_doc_two', 'show_one', show_func)
+        second_show_func = design.ShowFunctionDefinition('design_doc_two', 'show_two', show_func)
+        third_show_func = design.ShowFunctionDefinition('design_doc_five', 'update_one', show_func)
         _, db = self.temp_db()
         results = design.sync_definitions(
             db, (first_view, second_view, third_view,
                  first_updater, second_updater, third_updater,
-                 first_validator, second_validator))
+                 first_validator, second_validator,
+                 first_show_func, second_show_func, third_show_func))
         self.assertEqual(
-            len(results), 4, 'There should only be four design documents')
+            len(results), 5, 'There should only be five design documents')
 
     def test_sync_unknown_definition_type(self):
         func = 'function(doc) { emit(doc._id, doc._rev); }'

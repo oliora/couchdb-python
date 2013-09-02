@@ -341,6 +341,84 @@ class ValidateFunctionDefinition(DefinitionMixin):
                 languages.add(doc['language'])
 
 
+class ShowFunctionDefinition(DefinitionMixin):
+    r"""Definition of an show function stored in a specific design document.
+
+    An instance of this class can be used to access the results of the show
+    function call, as well as to keep the show function definition in the
+    design document up to date with the definition in the application code.
+
+    >>> from couchdb import Server
+    >>> server = Server()
+    >>> db = server.create('python-tests')
+
+    >>> show_func = ShowFunctionDefinition('tests', 'activate', '''
+    ... function(doc, req) {
+    ...     return {body: 'Hello, World!'}
+    ... }''')
+    >>> show_func.get_doc(db)
+
+    The show function is not yet stored in the database, in fact, design doc doesn't
+    even exist yet. That can be fixed using the `sync` method:
+
+    >>> show_func.sync(db)                                  #doctest: +ELLIPSIS
+    [(True, '_design/tests', ...)]
+    >>> design_doc = show_func.get_doc(db)
+    >>> design_doc                                          #doctest: +ELLIPSIS
+    <Document '_design/tests'@'...' {...}>
+    >>> print design_doc['shows']['activate']
+    function(doc, req) {
+        return {body: 'Hello, World!'}
+    }
+
+    >>> del server['python-tests']
+    """
+
+    def __init__(self, design, name, func, language='javascript',
+                 **defaults):
+        """Initialize the show function definition.
+
+        Note that the code in `func` is automatically dedented, that is,
+        any common leading whitespace is removed from each line.
+
+        :param design: the name of the design document
+        :param name: the name of the show function
+        :param func: the show function code
+        :param language: the name of the language used
+        """
+        super(ShowFunctionDefinition, self).__init__(design)
+        self.name = name
+        if isinstance(func, FunctionType):
+            func = _strip_decorators(getsource(func).rstrip())
+        self.func = dedent(func.lstrip('\n'))
+        self.language = language
+        self.defaults = defaults
+
+    def __call__(self, db, docid=None, **options):
+        """Execute the show function in the given database.
+
+        :param db: the `Database` instance
+        :param docid: optional ID of a document to pass to the update handler
+        :param options: optional query string parameters
+        :return: (headers, body) tuple, where headers is a dict of headers
+                 returned from the show function and body is a readable
+                 file-like instance
+        """
+        merged_options = self.defaults.copy()
+        merged_options.update(options)
+        return db.show('/'.join([self.design, self.name]), docid, **merged_options)
+
+    def __repr__(self):
+        return '<%s %r>' % (type(self).__name__, '/'.join([
+            '_design', self.design, '_show', self.name
+        ]))
+
+    @staticmethod
+    def _sync_doc(doc, view_functions, remove_missing, languages):
+        _sync_dict_field(doc, 'shows', view_functions, attrgetter('func'),
+                         remove_missing, languages)
+
+
 def sync_definitions(db, definitions, remove_missing=False, callback=None):
     """Ensure that the definitions stored in the database that correspond to a
     given list of "definition" instances match the code defined in those instances.
@@ -372,6 +450,7 @@ class _DesignDocument(object):
         (ValidateFunctionDefinition, 'validate_func'),
         (ViewDefinition, 'views'),
         (UpdateHandlerDefinition, 'update_handlers'),
+        (ShowFunctionDefinition, 'shows'),
     )
 
     @classmethod
