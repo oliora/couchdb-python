@@ -19,7 +19,36 @@ __all__ = ['sync_definitions', 'ViewDefinition']
 __docformat__ = 'restructuredtext en'
 
 
-class ViewDefinition(object):
+class DefinitionMixin(object):
+    r"""Helper class to implement definition types. Provides implementation
+    of some common methods of all definitions.
+    """
+    def __init__(self, design):
+        if design.startswith('_design/'):
+            design = design[8:]
+        self.design = design
+
+    def get_doc(self, db):
+        """Retrieve and return the design document corresponding to this
+        definition from the given database.
+
+        :param db: the `Database` instance
+        :return: a `client.Document` instance, or `None` if the design document
+                 does not exist in the database
+        :rtype: `Document`
+        """
+        return db.get('_design/%s' % self.design)
+
+    def sync(self, db):
+        """Ensure that the definition in the database matches
+        this definition instance.
+
+        :param db: the `Database` instance
+        """
+        return sync_definitions(db, [self])
+
+
+class ViewDefinition(DefinitionMixin):
     r"""Definition of a view stored in a specific design document.
     
     An instance of this class can be used to access the results of the view,
@@ -88,9 +117,7 @@ class ViewDefinition(object):
                         result rows
         :param options: view specific options (e.g. {'collation':'raw'})
         """
-        if design.startswith('_design/'):
-            design = design[8:]
-        self.design = design
+        super(ViewDefinition, self).__init__(design)
         self.name = name
         if isinstance(map_fun, FunctionType):
             map_fun = _strip_decorators(getsource(map_fun).rstrip())
@@ -123,25 +150,6 @@ class ViewDefinition(object):
         return '<%s %r>' % (type(self).__name__, '/'.join([
             '_design', self.design, '_view', self.name
         ]))
-
-    def get_doc(self, db):
-        """Retrieve and return the design document corresponding to this view
-        definition from the given database.
-        
-        :param db: the `Database` instance
-        :return: a `client.Document` instance, or `None` if the design document
-                 does not exist in the database
-        :rtype: `Document`
-        """
-        return db.get('_design/%s' % self.design)
-
-    def sync(self, db):
-        """Ensure that the view stored in the database matches the view defined
-        by this instance.
-        
-        :param db: the `Database` instance
-        """
-        return type(self).sync_many(db, [self])
 
     @staticmethod
     def sync_many(db, views, remove_missing=False, callback=None):
