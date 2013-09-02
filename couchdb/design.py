@@ -264,8 +264,8 @@ class UpdateHandlerDefinition(DefinitionMixin):
         ]))
 
     @staticmethod
-    def _sync_doc(doc, update_handlers, remove_missing, languages):
-        _sync_dict_field(doc, 'updates', update_handlers, remove_missing, languages)
+    def _sync_doc(doc, updates, remove_missing, languages):
+        _sync_dict_field(doc, 'updates', updates, remove_missing, languages)
 
 
 class ValidateFunctionDefinition(DefinitionMixin):
@@ -418,8 +418,8 @@ class ShowFunctionDefinition(DefinitionMixin):
         ]))
 
     @staticmethod
-    def _sync_doc(doc, view_functions, remove_missing, languages):
-        _sync_dict_field(doc, 'shows', view_functions, remove_missing, languages)
+    def _sync_doc(doc, shows, remove_missing, languages):
+        _sync_dict_field(doc, 'shows', shows, remove_missing, languages)
 
 
 def sync_definitions(db, definitions, remove_missing=False, callback=None):
