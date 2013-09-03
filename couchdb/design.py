@@ -442,13 +442,13 @@ def sync_definitions(db, definitions, remove_missing=False, callback=None):
     """
     definitions = sorted(definitions, key=attrgetter('design'))
 
-    design_docs = (_DesignDocument.from_definitions(design, defs)
+    design_docs = (_DesignDocumentDefinition.from_definitions(design, defs)
         for design, defs in groupby(definitions, key=attrgetter('design')))
 
-    return _DesignDocument.sync_many(db, design_docs, remove_missing, callback)
+    return _DesignDocumentDefinition.sync_many(db, design_docs, remove_missing, callback)
 
 
-class _DesignDocument(object):
+class _DesignDocumentDefinition(object):
     __definition_types = (
         (ValidateFunctionDefinition, 'validate_doc_update'),
         (ViewDefinition, 'views'),
@@ -458,7 +458,7 @@ class _DesignDocument(object):
 
     @classmethod
     def from_definitions(cls, design, definitions):
-        typed_definitions = [(def_type, name, []) for def_type, name in _DesignDocument.__definition_types]
+        typed_definitions = [(def_type, name, []) for def_type, name in _DesignDocumentDefinition.__definition_types]
 
         for definition in definitions:
             unknown_type = True
@@ -476,7 +476,7 @@ class _DesignDocument(object):
         if design.startswith('_design/'):
             design = design[8:]
         self.design = design
-        for _, name in _DesignDocument.__definition_types:
+        for _, name in _DesignDocumentDefinition.__definition_types:
             setattr(self, name, kwargs.pop(name, []))
         if kwargs:
             raise TypeError("Invalid keyword argument '%s'" % next(kwargs.iterkeys()))
@@ -484,7 +484,7 @@ class _DesignDocument(object):
     def _sync_doc(self, doc, remove_missing):
             languages = set()
 
-            for def_type, name in _DesignDocument.__definition_types:
+            for def_type, name in _DesignDocumentDefinition.__definition_types:
                 def_type._sync_doc(doc, getattr(self, name), remove_missing, languages)
 
             if len(languages) > 1:
